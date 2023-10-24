@@ -1,0 +1,22 @@
+{
+  "name": "ai-model-traning",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon --max-old-space-size=4400 index.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@tensorflow/tfjs-node": "^4.12.0",
+    "brain.js": "^2.0.0-beta.23",
+    "express": "^4.18.2",
+    "natural": "^6.8.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
