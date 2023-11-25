@@ -2,146 +2,77 @@ const XLSX = require("xlsx");
 const fs = require("fs");
 const path = require("path");
 const tfn = require("@tensorflow/tfjs-node");
+const { jsonIcd10code } = require("../ai_training/json/data-less-1");
+const { jsonIcd10codeFull } = require("../ai_training/json/data-full-1");
+const { jsonDSBIcd10codeFull } = require("../ai_training/json/data-dsb-1");
 
 let trainModal = null;
 let vocabulary = null;
 let maxSeqLength = null;
 let icdCodes = [];
 
-// version v2 is
-const modelTrainingTensorFlow = async () => {
-  const filePath = path.resolve(
-    __dirname,
-    "../ai_training/ICDCodeSet_full.csv"
-  );
-
-  if (fs.existsSync(filePath)) {
-    const workbook = XLSX.readFile(filePath);
-    const sheetName = workbook.SheetNames[0];
-    const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
-
-    // console.log(data);
-    const descriptions = data.map((entry) => entry.description.toLowerCase());
-    // const icdCodes = data.map((entry) => entry.icdCode);
-    icdCodes = data.map((entry) => entry.icdCode);
-
-    // console.log("descriptions", descriptions);
-    // console.log("icdCodes", icdCodes);
-
-    vocabulary = Array.from(new Set(descriptions.join(" ").split(" ")));
-
-    const sequences = descriptions.map((description) => {
-      const tokens = description.split(" ");
-      return tokens.map((token) => vocabulary.indexOf(token));
-    });
-
-    maxSeqLength = Math.max(...sequences.map((seq) => seq.length));
-    const paddedSequences = sequences.map((seq) => {
-      while (seq.length < maxSeqLength) {
-        seq.push(0); // Pad with zeros
-      }
-      return seq;
-    });
-
-    // Create input features and labels
-    const inputFeatures = tfn.tensor(paddedSequences);
-
-    // Encode ICD-10 codes using one-hot encoding
-    const labels = tfn.tensor(
-      icdCodes.map((code) => {
-        const label = new Array(icdCodes.length).fill(0);
-        const index = icdCodes.indexOf(code);
-        label[index] = 1;
-        return label;
-      })
-    );
-
-    // Create a simple neural network model
-    const model = tfn.sequential();
-    model.add(
-      tfn.layers.embedding({
-        inputDim: vocabulary.length,
-        outputDim: 32,
-        inputLength: maxSeqLength,
-      })
-    );
-    model.add(tfn.layers.flatten());
-    model.add(tfn.layers.dense({ units: 64, activation: "relu" }));
-    model.add(
-      tfn.layers.dense({ units: icdCodes.length, activation: "softmax" })
-    );
-
-    // Compile the model
-    model.compile({
-      optimizer: tfn.train.adam(),
-      loss: "categoricalCrossentropy", // Change loss function
-      metrics: ["accuracy"],
-    });
-    model.summary();
-    trainModal = model;
-    try {
-      // Train the model
-      await model.fit(inputFeatures, labels, { epochs: 100, batchSize: 1 });
-      console.log("Model training completed successfully.");
-
-      // You can now proceed to make predictions with the trained model.
-      const testDescription = "cute hepatitis"; // Replace with your test description
-
-      // Tokenize the test description and pad it to match the input sequence length
-      const testTokens = testDescription.split(" ");
-      const testSequence = testTokens.map((token) => {
-        const index = vocabulary.indexOf(token);
-        return index !== -1 ? index : 0; // Use 0 for out-of-vocabulary words
-      });
-
-      while (testSequence.length < maxSeqLength) {
-        testSequence.push(0); // Pad with zeros
-      }
-
-      // Make a prediction using the trained model
-      const testInputFeatures = tfn.tensor([testSequence]);
-      const prediction = model.predict(testInputFeatures);
-
-      // Decode the prediction to get the full ICD-10 code
-      const predictedCodeIndex = prediction.argMax(1).dataSync()[0];
-      const predictedFullIcdCode = icdCodes[predictedCodeIndex];
-
-      console.log("Predicted ICD-10 Code:", predictedFullIcdCode);
-    } catch (error) {
-      console.error("Training failed:", error);
-    }
-  } else {
-    console.error("The file does not exist at the specified path.");
-  }
-};
-
-// version v3 is for batch
-// 3.1
+// version v2
 // const modelTrainingTensorFlow = async () => {
-//   const filePath = path.resolve(
-//     __dirname,
-//     "../ai_training/ICDCodeSet_full.csv"
-//   );
+//   const filePath = path.resolve(__dirname, "../ai_training/icd10_prc.xlsx");
 
 //   if (fs.existsSync(filePath)) {
 //     const workbook = XLSX.readFile(filePath);
 //     const sheetName = workbook.SheetNames[0];
-//     const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+//     // const dataFromExcel = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+//     // const data = dataFromExcel.map((entry) => ({
+//     //   icdCode: entry.icdCode, // Ensure this matches your expected format
+//     //   description: entry.description, // Process the description as needed
+//     // }));
+//     // const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+//     // const data = jsonIcd10code;
+//     const data = jsonDSBIcd10codeFull;
+//     // const data = jsonIcd10codeFull;
 
-//     // Extract descriptions and ICD codes
+//     // const data = [
+//     //   {
+//     //     description: "Cholera due to Vibrio cholerae 01, biovar cholerae",
+//     //     icdCode: "A000",
+//     //   },
+//     //   {
+//     //     description: "Cholera due to Vibrio cholerae 01, biovar eltor",
+//     //     icdCode: "A001",
+//     //   },
+//     //   { description: "Cholera, unspecified", icdCode: "A009" },
+//     //   { description: "Typhoid fever, unspecified", icdCode: "A0100" },
+//     //   { description: "Typhoid meningitis", icdCode: "A0101" },
+//     //   { description: "Other specified acute viral hepatitis", icdCode: "B178" },
+//     //   { description: "Acute hepatitis E", icdCode: "B172" },
+//     //   {
+//     //     description: "Malignant neoplasm of commissure of lip, unspecified",
+//     //     icdCode: "C006",
+//     //   },
+//     //   {
+//     //     description: "Malignant neoplasm of overlapping sites of lip",
+//     //     icdCode: "C008",
+//     //   },
+//     //   {
+//     //     description: "   Malignant neoplasm of lip, unspecified",
+//     //     icdCode: "C009",
+//     //   },
+//     // ];
+
+//     console.log("data", data);
+
 //     const descriptions = data.map((entry) => entry.description.toLowerCase());
-//     const icdCodes = data.map((entry) => entry.icdCode);
+//     // const icdCodes = data.map((entry) => entry.icdCode);
+//     icdCodes = data.map((entry) => entry.icdCode);
 
-//     // Create vocabulary
-//     const vocabulary = Array.from(new Set(descriptions.join(" ").split(" ")));
+//     console.log("descriptions", descriptions);
+//     console.log("icdCodes", icdCodes);
 
-//     // Tokenize and pad sequences
+//     vocabulary = Array.from(new Set(descriptions.join(" ").split(" ")));
+
 //     const sequences = descriptions.map((description) => {
 //       const tokens = description.split(" ");
 //       return tokens.map((token) => vocabulary.indexOf(token));
 //     });
 
-//     const maxSeqLength = Math.max(...sequences.map((seq) => seq.length));
+//     maxSeqLength = Math.max(...sequences.map((seq) => seq.length));
 //     const paddedSequences = sequences.map((seq) => {
 //       while (seq.length < maxSeqLength) {
 //         seq.push(0); // Pad with zeros
@@ -149,15 +80,21 @@ const modelTrainingTensorFlow = async () => {
 //       return seq;
 //     });
 
+//     // Create input features and labels
+//     const inputFeatures = tfn.tensor(paddedSequences);
+
 //     // Encode ICD-10 codes using one-hot encoding
-//     const labelMap = new Map(icdCodes.map((code, index) => [code, index]));
-//     const numClasses = icdCodes.length;
-//     const labels = data.map((entry) => {
-//       const label = new Array(numClasses).fill(0);
-//       const index = labelMap.get(entry.icdCode);
-//       label[index] = 1;
-//       return label;
-//     });
+//     const labels = tfn.tensor(
+//       icdCodes.map((code) => {
+//         const label = new Array(icdCodes.length).fill(0);
+//         const index = icdCodes.indexOf(code);
+//         label[index] = 1;
+//         return label;
+//       })
+//     );
+
+//     console.log("Input Features Shape:", inputFeatures.shape);
+//     console.log("Labels Shape:", labels.shape);
 
 //     // Create a simple neural network model
 //     const model = tfn.sequential();
@@ -170,126 +107,6 @@ const modelTrainingTensorFlow = async () => {
 //     );
 //     model.add(tfn.layers.flatten());
 //     model.add(tfn.layers.dense({ units: 64, activation: "relu" }));
-//     model.add(tfn.layers.dense({ units: numClasses, activation: "softmax" }));
-
-//     // Compile the model
-//     model.compile({
-//       optimizer: tfn.train.adam(),
-//       loss: "categoricalCrossentropy",
-//       metrics: ["accuracy"],
-//     });
-//     model.summary();
-//     trainModal = model;
-
-//     try {
-//       // Train the model
-//       await model.fit(tfn.tensor(paddedSequences), tfn.tensor(labels), {
-//         epochs: 100,
-//         batchSize: 8, // Use an appropriate batch size
-//       });
-//       console.log("Model training completed successfully.");
-
-//       // You can now proceed to make predictions with the trained model.
-//       const testDescription = "cute hepatitis"; // Replace with your test description
-
-//       // Tokenize the test description and pad it to match the input sequence length
-//       const testTokens = testDescription.split(" ");
-//       const testSequence = testTokens.map((token) => {
-//         const index = vocabulary.indexOf(token);
-//         return index !== -1 ? index : 0; // Use 0 for out-of-vocabulary words
-//       });
-
-//       while (testSequence.length < maxSeqLength) {
-//         testSequence.push(0); // Pad with zeros
-//       }
-
-//       // Make a prediction using the trained model
-//       const testInputFeatures = tfn.tensor([testSequence]);
-//       const prediction = model.predict(testInputFeatures);
-
-//       // Decode the prediction to get the full ICD-10 code
-//       const predictedCodeIndex = prediction.argMax(1).dataSync()[0];
-//       const predictedFullIcdCode = icdCodes[predictedCodeIndex];
-
-//       console.log("Predicted ICD-10 Code:", predictedFullIcdCode);
-//     } catch (error) {
-//       console.error("Training failed:", error);
-//     }
-//   } else {
-//     console.error("The file does not exist at the specified path.");
-//   }
-// };
-
-// 3.2
-// const modelTrainingTensorFlow = async () => {
-//   const filePath = path.resolve(
-//     __dirname,
-//     "../ai_training/ICDCodeSet_full.csv"
-//   );
-
-//   if (fs.existsSync(filePath)) {
-//     const workbook = XLSX.readFile(filePath);
-//     const sheetName = workbook.SheetNames[0];
-//     const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
-
-//     // Extract descriptions and ICD codes
-//     const descriptions = data.map((entry) => entry.description.toLowerCase());
-//     const icdCodes = data.map((entry) => entry.icdCode);
-
-//     // Create vocabulary
-//     const vocabulary = Array.from(new Set(descriptions.join(" ").split(" ")));
-
-//     // Calculate maxSeqLength
-//     const maxSeqLength = Math.max(
-//       ...data.map((entry) => entry.description.split(" ").length)
-//     );
-
-//     // Define the batch size and epochs
-//     const batchSize = 8; // Adjust this as needed
-//     const epochs = 100;
-
-//     // Create a data generator using tf.data
-//     const dataGenerator = tfn.data.generator(function* () {
-//       for (let i = 0; i < data.length; i += batchSize) {
-//         const batchData = data.slice(i, i + batchSize);
-
-//         // Tokenize and pad sequences for the batch
-//         const batchSequences = batchData.map((entry) => {
-//           const tokens = entry.description.split(" ");
-//           return tokens.map((token) => vocabulary.indexOf(token));
-//         });
-
-//         const paddedSequences = batchSequences.map((seq) => {
-//           while (seq.length < maxSeqLength) {
-//             seq.push(0); // Pad with zeros
-//           }
-//           return seq;
-//         });
-
-//         // Encode ICD-10 codes for the batch
-//         const batchLabels = batchData.map((entry) => {
-//           const label = new Array(icdCodes.length).fill(0);
-//           const index = icdCodes.indexOf(entry.icdCode);
-//           label[index] = 1;
-//           return label;
-//         });
-
-//         yield { x: tfn.tensor(paddedSequences), y: tfn.tensor(batchLabels) };
-//       }
-//     });
-
-//     // Create a simple neural network model
-//     const model = tfn.sequential();
-//     model.add(
-//       tfn.layers.embedding({
-//         inputDim: vocabulary.length,
-//         outputDim: 32,
-//         inputLength: maxSeqLength,
-//       })
-//     );
-
-//     model.add(tfn.layers.flatten({ inputShape: [maxSeqLength, 32] })); // Specify the inputShape here
-//     model.add(tfn.layers.dense({ units: 64, activation: "relu" }));
 //     model.add(
 //       tfn.layers.dense({ units: icdCodes.length, activation: "softmax" })
 //     );
@@ -297,151 +114,39 @@ const modelTrainingTensorFlow = async () => {
 //     // Compile the model
 //     model.compile({
 //       optimizer: tfn.train.adam(),
-//       loss: "categoricalCrossentropy",
+//       loss: "categoricalCrossentropy", // Change loss function
 //       metrics: ["accuracy"],
 //     });
 //     model.summary();
 //     trainModal = model;
-
-//     try {
-//       // Train the model using the data generator
-//       for (const batch of dataGenerator) {
-//         await model.fit(batch.x, batch.y, { epochs: 1 });
-//       }
-
-//       console.log("Model training completed successfully.");
-
-//       // You can now proceed to make predictions with the trained model.
-//       const testDescription = "cute hepatitis"; // Replace with your test description
-
-//       // Tokenize the test description and pad it to match the input sequence length
-//       const testTokens = testDescription.split(" ");
-//       const testSequence = testTokens.map((token) => {
-//         const index = vocabulary.indexOf(token);
-//         return index !== -1 ? index : 0; // Use 0 for out-of-vocabulary words
-//       });
-
-//       while (testSequence.length < maxSeqLength) {
-//         testSequence.push(0); // Pad with zeros
-//       }
-
-//       // Make a prediction using the trained model
-//       const testInputFeatures = tfn.tensor([testSequence]);
-//       const prediction = model.predict(testInputFeatures);
-
-//       // Decode the prediction to get the full ICD-10 code
-//       const predictedCodeIndex = prediction.argMax(1).dataSync()[0];
-//       const predictedFullIcdCode = icdCodes[predictedCodeIndex];
-
-//       console.log("Predicted ICD-10 Code:", predictedFullIcdCode);
-//     } catch (error) {
-//       console.error("Training failed:", error);
-//     }
-//   } else {
-//     console.error("The file does not exist at the specified path.");
-//   }
-// };
-
-// 3.3
-// const modelTrainingTensorFlow = async () => {
-//   const filePath = path.resolve(
-//     __dirname,
-//     "../ai_training/ICDCodeSet_full.csv"
-//   );
-
-//   if (fs.existsSync(filePath)) {
-//     const workbook = XLSX.readFile(filePath);
-//     const sheetName = workbook.SheetNames[0];
-//     const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
-
-//     // Extract descriptions and ICD codes
-//     const descriptions = data.map((entry) => entry.description.toLowerCase());
-//     const icdCodes = data.map((entry) => entry.icdCode);
-
-//     // Create vocabulary
-//     const vocabulary = Array.from(new Set(descriptions.join(" ").split(" ")));
-
-//     // Calculate maxSeqLength
-//     const maxSeqLength = Math.max(
-//       ...data.map((entry) => entry.description.split(" ").length)
-//     );
-
-//     // Define the batch size and epochs
-//     const batchSize = 4; // Adjust this as needed
-//     const epochs = 100;
-
-//     // Create empty arrays to store training data
-//     const xData = [];
-//     const yData = [];
-
-//     // Tokenize, pad sequences, and encode ICD-10 codes
-//     for (let i = 0; i < data.length; i += batchSize) {
-//       const batchData = data.slice(i, i + batchSize);
-
-//       const batchX = [];
-//       const batchY = [];
-
-//       for (const entry of batchData) {
-//         const tokens = entry.description.split(" ");
-//         const seq = tokens.map((token) => vocabulary.indexOf(token));
-//         while (seq.length < maxSeqLength) {
-//           seq.push(0); // Pad with zeros
-//         }
-//         batchX.push(seq);
-
-//         const label = new Array(icdCodes.length).fill(0);
-//         const index = icdCodes.indexOf(entry.icdCode);
-//         label[index] = 1;
-//         batchY.push(label);
-//       }
-
-//       xData.push(batchX);
-//       yData.push(batchY);
-//     }
-
-//     // Combine batch arrays
-//     const xTrain = tfn.tensor(xData);
-//     const yTrain = tfn.tensor(yData);
-
-//     // Create a simple neural network model
-//     const model = tfn.sequential();
-//     model.add(
-//       tfn.layers.embedding({
-//         inputDim: vocabulary.length,
-//         outputDim: 32,
-//         inputLength: maxSeqLength,
-//       })
-//     );
-
-//     model.add(tfn.layers.flatten({ inputShape: [maxSeqLength, 32] })); // Specify the inputShape here
-//     model.add(tfn.layers.dense({ units: 64, activation: "relu" }));
-//     model.add(
-//       tfn.layers.dense({ units: icdCodes.length, activation: "softmax" })
-//     );
-
-//     // Compile the model
-//     model.compile({
-//       optimizer: tfn.train.adam(),
-//       loss: "categoricalCrossentropy",
-//       metrics: ["accuracy"],
-//     });
-//     model.summary();
-//     trainModal = model;
-
 //     try {
 //       // Train the model
-//       await model.fit(xTrain, yTrain, { epochs: epochs });
-
+//       await model.fit(inputFeatures, labels, { epochs: 100, batchSize: 1 });
 //       console.log("Model training completed successfully.");
+
+//       const history = await model.evaluate(inputFeatures, labels);
+//       const accuracyTensor = history[1]; // Assuming accuracy is the second metric
+//       const accuracy = accuracyTensor.dataSync()[0];
+//       console.log("Final Accuracy: " + accuracy);
 
 //       // You can now proceed to make predictions with the trained model.
 //       const testDescription = "cute hepatitis"; // Replace with your test description
 
 //       // Tokenize the test description and pad it to match the input sequence length
+//       // const testTokens = testDescription.split(" ");
+//       // const testSequence = testTokens.map((token) => {
+//       //   const index = vocabulary.indexOf(token);
+//       //   return index !== -1 ? index : 0; // Use 0 for out-of-vocabulary words
+//       // });
+
+//       // while (testSequence.length < maxSeqLength) {
+//       //   testSequence.push(0); // Pad with zeros
+//       // }
+
 //       const testTokens = testDescription.split(" ");
-//       const testSequence = testTokens.map((token) => {
+//       const testSequence = testTokens.slice(0, maxSeqLength).map((token) => {
 //         const index = vocabulary.indexOf(token);
-//         return index !== -1 ? index : 0; // Use 0 for out-of-vocabulary words
+//         return index !== -1 ? index : 0;
 //       });
 
 //       while (testSequence.length < maxSeqLength) {
@@ -450,12 +155,14 @@ const modelTrainingTensorFlow = async () => {
 
 //       // Make a prediction using the trained model
 //       const testInputFeatures = tfn.tensor([testSequence]);
+
 //       const prediction = model.predict(testInputFeatures);
 
 //       // Decode the prediction to get the full ICD-10 code
 //       const predictedCodeIndex = prediction.argMax(1).dataSync()[0];
 //       const predictedFullIcdCode = icdCodes[predictedCodeIndex];
 
+//       console.log("predictedCodeIndex", predictedCodeIndex);
 //       console.log("Predicted ICD-10 Code:", predictedFullIcdCode);
 //     } catch (error) {
 //       console.error("Training failed:", error);
@@ -465,128 +172,176 @@ const modelTrainingTensorFlow = async () => {
 //   }
 // };
 
-// 3.4
-// const modelTrainingTensorFlow = async () => {
-//   const filePath = path.resolve(
-//     __dirname,
-//     "../ai_training/ICDCodeSet_full.csv"
-//   );
+// version v3 improve the performance
+// async function loadWord2VecModel() {
+//   const modelUrl =
+//     "https://tfhub.dev/tensorflow/tfjs-model/word2vec/1/default/1";
+//   const model = await tfn.loadLayersModel(modelUrl);
+//   return model;
+// }
 
-//   if (fs.existsSync(filePath)) {
-//     const workbook = XLSX.readFile(filePath);
-//     const sheetName = workbook.SheetNames[0];
-//     const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+const modelTrainingTensorFlow = async () => {
+  const filePath = path.resolve(__dirname, "../ai_training/icd10_prc.xlsx");
 
-//     // Extract descriptions and ICD codes
-//     const descriptions = data.map((entry) => entry.description.toLowerCase());
-//     const icdCodes = data.map((entry) => entry.icdCode);
+  if (fs.existsSync(filePath)) {
+    // const data = [
+    //   {
+    //     description: "Cholera due to Vibrio cholerae 01, biovar cholerae",
+    //     icdCode: "A000",
+    //   },
+    //   {
+    //     description: "Cholera due to Vibrio cholerae 01, biovar eltor",
+    //     icdCode: "A001",
+    //   },
+    //   { description: "Cholera, unspecified", icdCode: "A009" },
+    //   { description: "Typhoid fever, unspecified", icdCode: "A0100" },
+    //   { description: "Typhoid meningitis", icdCode: "A0101" },
+    //   { description: "Other specified acute viral hepatitis", icdCode: "B178" },
+    //   { description: "Acute hepatitis E", icdCode: "B172" },
+    //   {
+    //     description: "Malignant neoplasm of commissure of lip, unspecified",
+    //     icdCode: "C006",
+    //   },
+    //   {
+    //     description: "Malignant neoplasm of overlapping sites of lip",
+    //     icdCode: "C008",
+    //   },
+    //   {
+    //     description: "   Malignant neoplasm of lip, unspecified",
+    //     icdCode: "C009",
+    //   },
+    // ];
+    // const data = jsonIcd10code;
+    const data = jsonDSBIcd10codeFull;
+    // const data = jsonIcd10codeFull;
+    const augmentedData = [];
+    data.forEach((entry) => {
+      const description = entry.description;
+      const tokens = description.split(" ");
+      for (let i = 0; i < tokens.length; i++) {
+        const variation = tokens.slice(0, i + 1).join(" ");
+        augmentedData.push({ description: variation, icdCode: entry.icdCode });
+      }
+    });
 
-//     // Create vocabulary
-//     const vocabulary = Array.from(new Set(descriptions.join(" ").split(" ")));
+    console.log("augmentedData ", augmentedData);
 
-//     // Calculate maxSeqLength
-//     const maxSeqLength = Math.max(
-//       ...data.map((entry) => entry.description.split(" ").length)
-//     );
+    // Combine the original data with augmented data
+    const combinedData = data.concat(augmentedData);
 
-//     // Define the batch size and epochs
-//     const batchSize = 4; // Adjust this as needed
-//     const epochs = 100;
+    const descriptions = combinedData.map((entry) =>
+      entry.description.toLowerCase()
+    );
 
-//     // Create empty arrays to store training data
-//     const xData = [];
-//     const yData = [];
+    icdCodes = combinedData.map((entry) => entry.icdCode);
 
-//     // Tokenize, pad sequences, and encode ICD-10 codes
-//     for (let i = 0; i < data.length; i += batchSize) {
-//       const batchData = data.slice(i, i + batchSize);
+    vocabulary = Array.from(new Set(descriptions.join(" ").split(" ")));
 
-//       const batchX = [];
-//       const batchY = [];
+    const sequences = descriptions.map((description) => {
+      const tokens = description.split(" ");
+      return tokens.map((token) => vocabulary.indexOf(token));
+    });
 
-//       for (const entry of batchData) {
-//         const tokens = entry.description.split(" ");
-//         const seq = tokens.map((token) => vocabulary.indexOf(token));
-//         while (seq.length < maxSeqLength) {
-//           seq.push(0); // Pad with zeros
-//         }
-//         batchX.push(seq);
+    maxSeqLength = Math.max(...sequences.map((seq) => seq.length));
+    const paddedSequences = sequences.map((seq) => {
+      while (seq.length < maxSeqLength) {
+        seq.push(0);
+      }
+      return seq;
+    });
 
-//         const label = new Array(icdCodes.length).fill(0);
-//         const index = icdCodes.indexOf(entry.icdCode);
-//         label[index] = 1;
-//         batchY.push(label);
-//       }
+    // Load pre-trained Word2Vec model
+    // const word2vecModel = await loadWord2VecModel();
+    // Create input features and labels
+    const inputFeatures = tfn.tensor(paddedSequences);
+    const labels = tfn.tensor(
+      icdCodes.map((code) => {
+        const label = new Array(icdCodes.length).fill(0);
+        const index = icdCodes.indexOf(code);
+        label[index] = 1;
+        return label;
+      })
+    );
+    // const labels = tfn.tensor(icdCodes.map((code) => icdCodes.indexOf(code)));
 
-//       xData.push(batchX);
-//       yData.push(batchY);
-//     }
+    // Create a simple neural network model
+    // Replace the embedding layer with pre-trained Word2Vec embeddings
+    const model = tfn.sequential();
+    // model.add(word2vecModel); // Use pre-trained Word2Vec embeddings
+    // Specify inputShape in the first layer
+    model.add(
+      tfn.layers.embedding({
+        inputDim: vocabulary.length,
+        outputDim: 100, // Adjust embedding dimension as needed
+        inputLength: maxSeqLength,
+        inputShape: [maxSeqLength], // Specify input shape
+      })
+    );
+    model.add(tfn.layers.flatten());
+    model.add(tfn.layers.dense({ units: 64, activation: "relu" }));
+    model.add(
+      tfn.layers.dense({ units: icdCodes.length, activation: "softmax" })
+    );
+    // Compile the model
+    model.compile({
+      optimizer: tfn.train.adam(),
+      loss: "categoricalCrossentropy",
+      metrics: ["accuracy"],
+    });
 
-//     // Combine batch arrays
-//     const xTrain = tfn.tensor(xData);
-//     const yTrain = tfn.tensor(yData);
+    console.log("Model Summary:");
+    model.summary();
 
-//     // Create a simple neural network model
-//     const model = tfn.sequential();
-//     model.add(
-//       tfn.layers.embedding({
-//         inputDim: vocabulary.length,
-//         outputDim: 32,
-//         inputLength: maxSeqLength,
-//       })
-//     );
+    trainModal = model;
+    try {
+      // Train the model
+      await model.fit(inputFeatures, labels, { epochs: 100, batchSize: 1 });
+      console.log("Model training completed successfully.");
 
-//     model.add(tfn.layers.flatten({ inputShape: [maxSeqLength, 32] })); // Specify the inputShape here
-//     model.add(tfn.layers.dense({ units: 64, activation: "relu" }));
-//     model.add(
-//       tfn.layers.dense({ units: icdCodes.length, activation: "softmax" })
-//     );
+      const history = await model.evaluate(inputFeatures, labels);
+      const accuracyTensor = history[1];
+      const accuracy = accuracyTensor.dataSync()[0];
+      console.log("Final Accuracy: " + accuracy);
 
-//     // Compile the model
-//     model.compile({
-//       optimizer: tfn.train.adam(),
-//       loss: "categoricalCrossentropy",
-//       metrics: ["accuracy"],
-//     });
+      // You can now proceed to make predictions with the trained model.
+      const testDescription = "Malignant neoplasm of lip";
 
-//     model.summary();
+      // Tokenize the test description and pad it to match the input sequence length
+      // const testTokens = testDescription.split(" ");
+      // const testSequence = testTokens.map((token) => {
+      //   const index = vocabulary.indexOf(token);
+      //   return index !== -1 ? index : 0; // Use 0 for out-of-vocabulary words
+      // });
 
-//     try {
-//       // Train the model
-//       await model.fit(xTrain, yTrain, { epochs: epochs });
+      // while (testSequence.length < maxSeqLength) {
+      //   testSequence.push(0); // Pad with zeros
+      // }
 
-//       console.log("Model training completed successfully.");
+      const testTokens = testDescription.split(" ");
+      const testSequence = testTokens.slice(0, maxSeqLength).map((token) => {
+        const index = vocabulary.indexOf(token);
+        return index !== -1 ? index : 0;
+      });
 
-//       // You can now proceed to make predictions with the trained model.
-//       const testDescription = "cute hepatitis"; // Replace with your test description
+      while (testSequence.length < maxSeqLength) {
+        testSequence.push(0);
+      }
 
-//       // Tokenize the test description and pad it to match the input sequence length
-//       const testTokens = testDescription.split(" ");
-//       const testSequence = testTokens.map((token) => {
-//         const index = vocabulary.indexOf(token);
-//         return index !== -1 ? index : 0; // Use 0 for out-of-vocabulary words
-//       });
+      const testInputFeatures = tfn.tensor([testSequence]);
 
-//       while (testSequence.length < maxSeqLength) {
-//         testSequence.push(0); // Pad with zeros
-//       }
+      const prediction = model.predict(testInputFeatures);
 
-//       // Make a prediction using the trained model
-//       const testInputFeatures = tfn.tensor([testSequence]);
-//       const prediction = model.predict(testInputFeatures);
+      const predictedCodeIndex = prediction.argMax(1).dataSync()[0];
+      const predictedFullIcdCode = icdCodes[predictedCodeIndex];
 
-//       // Decode the prediction to get the full ICD-10 code
-//       const predictedCodeIndex = prediction.argMax(1).dataSync()[0];
-//       const predictedFullIcdCode = icdCodes[predictedCodeIndex];
-
-//       console.log("Predicted ICD-10 Code:", predictedFullIcdCode);
-//     } catch (error) {
-//       console.error("Training failed:", error);
-//     }
-//   } else {
-//     console.error("The file does not exist at the specified path.");
-//   }
-// };
+      console.log("Predicted ICD-10 Code:", predictedFullIcdCode);
+    } catch (error) {
+      console.error("Training failed:", error);
+    }
+  } else {
+    console.error("The file does not exist at the specified path.");
+  }
+};
 
 const testPredictions = async (description) => {
   let result = "";
@@ -621,6 +376,7 @@ const testPredictions = async (description) => {
       const predictedCodeIndex = prediction.argMax(1).dataSync()[0];
       const predictedFullIcdCode = icdCodes[predictedCodeIndex];
 
+      console.log("predictedCodeIndex", predictedCodeIndex);
       console.log("Predicted ICD-10 Code:", predictedFullIcdCode);
       return (result = `"Predicted ICD-10 Code:", ${predictedFullIcdCode}`);
     } catch (error) {
